@@ -1,0 +1,420 @@
+#include "stdafx.h"
+#include<opencv2/opencv.hpp>
+#include<opencv2/highgui/highgui.hpp>
+#include<math.h>
+#include<string>
+#include<iostream>
+#include<vector>
+#include "opencv2/stitching.hpp"
+#include<time.h>
+using namespace cv;
+using namespace std;
+int main()
+{
+	Mat addSaltNoise(Mat p, double r, int type);
+	Mat addGaussianNoise(Mat p, double sigma, double z);
+	Mat GeometricMeanFilter(Mat p, int ksize);
+	Mat ContraHarmonicMeanFilter(Mat p, int ksize, double Q);
+	Mat adptive(Mat p, int ksize, int maxsize);
+	Mat transImagetofreq(Mat p, Mat &freq);
+	Mat my_freblur(Mat p, vector<Mat> Blur);
+	Mat diffuse(Mat gray, double a, double b, int T);
+	Mat WieneFilter(Mat gray, double a, double b, int T, double k);
+	Mat leastSquareFilter(Mat gray, double a, double b, int T, double r);
+	double FindBestSolution(Mat g, double sigma, double u, double initial_r, double a, double b, int T, double aph);
+	Mat input = imread("C:\\Users\\Lenovo\\Desktop\\lena.bmp");
+	Mat gray;
+	Mat salt;
+	Mat ga;
+	Mat Aver;
+	Mat Med;
+	Mat diff;
+	cvtColor(input, gray, CV_BGR2GRAY);
+	salt=addSaltNoise(gray, 0.1,2);
+	diff = diffuse(gray , 0.05, 0.05, 1);
+	ga = addGaussianNoise(diff, 0, 0);
+	//imshow("diff", ga);
+	//cvWaitKey();
+	imshow("winen",WieneFilter(ga, 0.05, 0.05, 1, 1e-5));
+	imshow("least", leastSquareFilter(ga, 0.05, 0.05, 1,0.0035));
+	//cvWaitKey();
+  //	cvNamedWindow("gray", 0);
+	blur(salt, Aver, CvSize(5, 5));
+	medianBlur(salt, Med, 5);
+	//imshow("k", ga);
+	//imshow("salt",salt);
+	//cout << ContraHarmonicMeanFilter(gray, 5, 1.5);
+	//imshow("ga", ga);
+	//imshow("gray", gray);
+	//imshow("Aver", Aver);
+	//imshow("GEO", GeometricMeanFilter(salt, 3));
+	//imshow("con", ContraHarmonicMeanFilter(salt, 3, -1.5));
+	//imshow("adpt", adptive(salt, 3, 7));
+	cvWaitKey();
+
+
+}
+
+
+Mat addSaltNoise(Mat p, double r,int type)
+{
+	int n = r * p.cols*p.rows;
+	Mat result = p.clone();
+	for (int k = 0; k < n; k++)
+	{
+		if (type == 1)
+		{
+			int i = rand() % p.rows;
+			int j = rand() % p.cols;
+			result.at<uchar>(i, j) = 255;
+		}
+		if (type == 2)
+		{
+		int i1 = rand() % p.rows;
+		int j1 = rand() % p.cols;
+		result.at<uchar>(i1, j1) = 0;
+	    }
+	}
+	return result;
+}
+
+Mat addGaussianNoise(Mat p, double sigma ,double z)
+{
+	RNG random;
+	Mat result = p;
+	//result.convertTo(result , CV_32FC1);
+	for (int i = 0; i < result.rows; i++)
+	{
+		for (int j = 0; j < result.cols; j++)
+		{
+			result.at<float>(i, j) = result.at<float>(i, j) + float(z)+float(random.gaussian(sigma));
+		}
+	}
+	//result.convertTo(result, CV_8UC1);
+	return result;
+
+}
+
+
+Mat GeometricMeanFilter(Mat p, int ksize)
+{
+	
+	Mat temp;
+	Mat temp1;
+	copyMakeBorder(p, temp, ksize -1, ksize -1, ksize -1, ksize -1, BorderTypes::BORDER_REFLECT); 
+	temp1 = temp.clone();
+	for (int i = ksize -1; i < temp.rows - ksize +1; i++)
+	{
+		for (int j = ksize -1; j < temp.cols - ksize +1; j++)
+		{
+			double mul = 1;
+			for (int a = 0; a <ksize ; a++)
+			{
+				for (int b = 0; b < ksize; b++)
+				{
+					mul *= temp1.at<uchar>(i + a-(ksize-1), j + b - (ksize - 1));
+				}
+			}
+			auto pixel = pow(mul, 1.0 / (ksize * ksize));
+			if (pixel < 0)
+				pixel = 0;
+			else if (pixel >= 255)
+				pixel = 255;
+			temp.at<uchar>(i, j) = static_cast<uchar>(pixel);
+		}
+	}
+	Rect rect(ksize -1, ksize -1, p.cols, p.rows);
+	p= temp(rect);
+	return p;
+}
+
+
+Mat ContraHarmonicMeanFilter(Mat p, int ksize,double Q)
+{
+	//p.convertTo(p, CV_32FC1);
+	Mat temp;
+	Mat temp1;
+	//cvWaitKey();
+	double up = 0;
+	double down = 0;
+	copyMakeBorder(p, temp, ksize - 1, ksize - 1, ksize - 1, ksize - 1, BorderTypes::BORDER_REFLECT);
+	temp1= temp.clone();
+	for (int i = ksize - 1; i < temp.rows - ksize + 1; i++)
+	{
+		for (int j = ksize - 1; j < temp.cols - ksize + 1; j++)
+		{
+			up = 0;
+			down = 0;
+			for (int a = 0; a < ksize; a++)
+			{
+				for (int b = 0; b < ksize; b++)
+				{
+					up += pow(temp1.at<uchar>(i + a - (ksize - 1), j + b - (ksize - 1)), Q + 1);
+					down+= pow(temp1.at<uchar>(i + a - (ksize - 1), j + b - (ksize - 1)), Q );
+				}
+			}
+  			auto pixel = up/down;
+			if (pixel < 0)
+				pixel = 0;
+			else if (pixel >= 255)
+				pixel = 255;
+			temp.at<uchar>(i, j) = pixel;
+		}
+	}
+	Rect rect(ksize - 1, ksize - 1, p.cols, p.rows);
+	p = temp(rect);
+	return p;
+}
+
+
+
+Mat adptive(Mat p, int ksize, int maxsize)
+{
+	uchar getAdpt(Mat p, int ksize, int maxsize, int i, int j);
+	Mat temp;
+	Mat temp1;
+	copyMakeBorder(p, temp, maxsize - 1, maxsize - 1, maxsize - 1, maxsize - 1, BorderTypes::BORDER_REFLECT);
+	temp1 = temp.clone();
+	for (int i = maxsize - 1; i < temp.rows - maxsize + 1; i++)
+	{
+		for (int j = maxsize - 1; j < temp.cols - maxsize + 1; j++)
+		{
+			temp.at<uchar>(i, j) = getAdpt(temp1, ksize, maxsize, i, j);
+		}
+	}
+	Rect rect(maxsize - 1, maxsize - 1, p.cols, p.rows);
+	p = temp(rect);
+	return p;
+}
+uchar getAdpt(Mat p, int ksize, int maxsize,int i,int j)
+{
+	vector<uchar> point(0);
+	for (int a = 0; a < ksize; a++)
+	{
+		for (int b = 0; b < ksize; b++)
+		{
+			point.push_back(p.at<uchar>(i + a - (ksize - 1), j + b - (ksize - 1)));
+		}
+	}
+	sort(point.begin(), point.end());
+	uchar zmin = point[0];
+	uchar zmax = point[ksize*ksize - 1];
+	uchar zmed = point[ksize / 2];
+	if ((zmed - zmin) > 0 && (zmed - zmax) < 0)
+	{
+		if (p.at<uchar>(i, j) > zmin&&p.at<uchar>(i, j) < zmax)
+		{
+			return p.at<uchar>(i, j);
+		}
+		else
+		{
+			return zmed;
+		}
+	}
+	else
+	{
+		ksize = ksize + 2;
+		if (ksize < maxsize)
+			return getAdpt(p, ksize, maxsize, i, j);
+		else
+			return zmed;
+	}
+}
+
+
+Mat transImagetofreq(Mat p, Mat &freq)
+{
+	vector<Mat> temp(2);
+	Mat im = Mat::zeros(p.size(), CV_32FC1);
+	temp[0] = p;
+	temp[1] = im;
+	Mat complex;
+	merge(temp, complex);
+	dft(complex, complex);
+	split(complex, temp);
+	merge(temp, freq);
+	//cout << freq;
+	Mat result;
+	magnitude(temp[0], temp[1], result);
+	result += Scalar::all(1);
+	log(result, result);
+	normalize(result, result, 1, 0, CV_MINMAX);
+	return result;
+}
+Mat my_freblur(Mat p, vector<Mat> Blur)
+{
+	vector<Mat> freq(2);
+	vector<Mat> result(2);
+	Mat last;
+	split(p, freq);
+	Mat blur_r;
+	Mat blur_i;
+	Mat blur_rr,blur_ri,blur_ir,blur_ii;
+	Mat BLUR;
+	Mat BLUR_r;
+	multiply(freq[0], Blur[0], blur_rr);
+	multiply(freq[1], Blur[1], blur_ii);
+	multiply(freq[0], Blur[1], blur_ri);
+	multiply(freq[1], Blur[0], blur_ir);
+	addWeighted(blur_rr,1, blur_ii, -1, 0,blur_r);
+	add(blur_ir, blur_ri, blur_i);
+	result[0] = blur_r;
+	result[1] = blur_i;
+	merge(result, BLUR);
+	idft(BLUR, BLUR_r,DFT_SCALE|DFT_REAL_OUTPUT);
+	//split(BLUR_r, result);
+	//magnitude(result[0], result[1], last);
+	//BLUR_r.convertTo(BLUR_r, CV_8U);
+	return BLUR_r;
+
+}
+
+Mat diffuse(Mat gray, double a, double b, int T)
+{
+	Mat src;
+	int w = 2 * getOptimalDFTSize(gray.cols);
+	int h = 2 * getOptimalDFTSize(gray.rows);
+	copyMakeBorder(gray, src, 0, h - gray.rows, 0, w - gray.cols, BORDER_CONSTANT, Scalar::all(0));
+	src.convertTo(src, CV_32FC1);
+	Mat fre;
+	transImagetofreq(src, fre);
+	//cout << fre;
+	vector<Mat> HBlur(2);
+	HBlur[0] = Mat::zeros(src.size(), src.type());
+	HBlur[1] = Mat::zeros(src.size(), src.type());
+	for (int i = 1; i < src.rows; i++)
+	{
+		for (int j = 1; j < src.cols; j++)
+		{
+			HBlur[0].at<float>(i, j) = (T / (CV_PI*(i*a + j * b)))*sin(CV_PI*(i*a + j * b))*cos(CV_PI*(i*a + j * b));
+			HBlur[1].at<float>(i, j) = ((-1*T )/ (CV_PI*(i*a + j * b)))*sin(CV_PI*(i*a + j * b))*sin(CV_PI*(i*a + j * b));
+
+		}
+	}
+	Mat result;
+	result = my_freblur(fre, HBlur);
+    normalize(result, result, 1, 0, CV_MINMAX);
+	//cout << result;
+	Rect rect(0, 0, gray.rows, gray.cols);
+	Mat result_roi = result(rect);
+	//imshow("o", result_roi);
+	//cvWaitKey();
+	return result_roi;
+}
+
+Mat WieneFilter(Mat gray, double a,double b,int T,double k)
+{
+	Mat src;
+	int w = 2 * getOptimalDFTSize(gray.cols);
+	int h = 2 * getOptimalDFTSize(gray.rows);
+	copyMakeBorder(gray, src, 0, h - gray.rows, 0, w - gray.cols, BORDER_CONSTANT, Scalar::all(0));
+	src.convertTo(src, CV_32FC1);
+	Mat fre;
+	double AM;
+	transImagetofreq(src, fre);
+	//cout << fre;
+	vector<Mat> HBlur(2);
+	HBlur[0] = Mat::zeros(src.size(), src.type());
+	HBlur[1] = Mat::zeros(src.size(), src.type());
+	for (int i = 1; i < src.rows; i++)
+	{
+		for (int j = 1; j < src.cols; j++)
+		{
+			HBlur[0].at<float>(i, j) = (T / (CV_PI*(i*a + j * b)))*sin(CV_PI*(i*a + j * b))*cos(CV_PI*(i*a + j * b));
+			HBlur[1].at<float>(i, j) = ((-1 * T) / (CV_PI*(i*a + j * b)))*sin(CV_PI*(i*a + j * b))*sin(CV_PI*(i*a + j * b));
+			AM = pow(HBlur[0].at<float>(i, j), 2) + pow(HBlur[1].at<float>(i, j), 2);
+			HBlur[0].at<float>(i, j) = HBlur[0].at<float>(i, j) / (AM + k);
+			HBlur[1].at<float>(i, j) = -1*HBlur[1].at<float>(i, j) / (AM + k);
+		}
+	}
+
+	Mat result;
+	result = my_freblur(fre, HBlur);
+	normalize(result, result, 1, 0, CV_MINMAX);
+	Rect rect(0, 0, gray.rows, gray.cols);
+	Mat result_roi = result(rect);
+	//imshow("k", result_roi);
+	//cvWaitKey();
+	return result_roi;
+
+}
+Mat leastSquareFilter(Mat gray, double a, double b, int T, double r)
+{
+	Mat src;
+	Mat p_ex;
+	int w = 2 * getOptimalDFTSize(gray.cols);
+	int h = 2 * getOptimalDFTSize(gray.rows);
+	copyMakeBorder(gray, src, 0, h - gray.rows, 0, w - gray.cols, BORDER_CONSTANT, Scalar::all(0));
+	//src.convertTo(src, CV_32FC1);
+	Mat fre;
+	Mat p_fre;
+	Mat p_EN;
+	double AM;
+	Mat p= Mat::zeros(CvSize(3,3), src.type());
+	p.at<float>(1, 1) = 4;
+	p.at<float>(0, 1) = -1;
+	p.at<float>(1, 0) = -1;
+	p.at<float>(2, 1) = -1;
+	p.at<float>(1, 2) = -1;
+	copyMakeBorder(p, p_ex, 0, h - p.rows, 0, w - p.cols, BORDER_CONSTANT, Scalar::all(0));
+	transImagetofreq(src, fre);
+	p_EN=transImagetofreq(p_ex, p_fre);
+	//cout << fre;
+	vector<Mat> HBlur(2);
+	HBlur[0] = Mat::zeros(src.size(), src.type());
+	HBlur[1] = Mat::zeros(src.size(), src.type());
+	for (int i = 1; i < src.rows; i++)
+	{
+		for (int j = 1; j < src.cols; j++)
+		{
+			HBlur[0].at<float>(i, j) = (T / (CV_PI*(i*a + j * b)))*sin(CV_PI*(i*a + j * b))*cos(CV_PI*(i*a + j * b));
+			HBlur[1].at<float>(i, j) = ((-1 * T) / (CV_PI*(i*a + j * b)))*sin(CV_PI*(i*a + j * b))*sin(CV_PI*(i*a + j * b));
+			AM = pow(HBlur[0].at<float>(i, j), 2) + pow(HBlur[1].at<float>(i, j), 2);
+			HBlur[0].at<float>(i, j) = HBlur[0].at<float>(i, j) / (AM + r*pow(p_EN.at<float>(i, j),2));
+			HBlur[1].at<float>(i, j) = -1 * HBlur[1].at<float>(i, j) / (AM + r * pow(p_EN.at<float>(i, j), 2));
+		}
+	}
+
+	Mat result;
+	result = my_freblur(fre, HBlur);
+	normalize(result, result, 1, 0, CV_MINMAX);
+	Rect rect(0, 0, gray.rows, gray.cols);
+	Mat result_roi = result(rect);
+	//imshow("k", result_roi);
+	//cvWaitKey();
+	return result_roi;
+}
+
+double FindBestSolution(Mat g,  double sigma, double u, double initial_r,double a,double b,int T,double aph)
+{
+	double best_r;
+	double noise = g.rows*g.cols*(sigma + pow(u, 2));
+	best_r = initial_r;
+	double  r_result = 0;
+	Mat R = Mat::zeros(g.size(), g.type());
+	while (abs(r_result - noise) > aph)
+	{
+		Mat Hfhat = diffuse(leastSquareFilter(g, a, b, T, best_r), a, b, T);
+		imshow("Hfhat", Hfhat);
+		cvWaitKey();
+		for (int i = 0; i < g.rows; i++)
+		{
+			for (int j = 0; j < g.cols; j++)
+			{
+				R.at<float>(i, j) = g.at<float>(i, j) - Hfhat.at<float>(i, j);
+				r_result += pow(R.at<float>(i, j), 2);
+
+			}
+		}
+		if (r_result < noise - aph)
+		{
+			best_r = 2 * best_r;
+		}
+		if (r_result > noise + aph)
+		{
+			best_r = best_r / 2;
+		}
+	}
+	return best_r;
+
+}
